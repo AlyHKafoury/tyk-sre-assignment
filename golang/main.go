@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -10,6 +11,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
+
+type Server struct {
+	K8sClientSet *kubernetes.Clientset
+}
 
 type DeploymentInfo struct {
 	Name          string `json:"deployment_name"`
@@ -24,7 +29,7 @@ type ClusterDeploymentsInfo struct {
 
 func main() {
 	kubeconfig := flag.String("kubeconfig", "", "path to kubeconfig, leave empty for in-cluster")
-	// listenAddr := flag.String("address", ":8080", "HTTP server listen address")
+	listenAddr := flag.String("address", ":8080", "HTTP server listen address")
 
 	flag.Parse()
 
@@ -44,11 +49,13 @@ func main() {
 	}
 
 	fmt.Printf("Connected to Kubernetes %s\n", version)
-
-	getDeploymentsHealth(clientset)
-	// if err := startServer(*listenAddr); err != nil {
-	// 	panic(err)
-	// }
+	server := Server{
+		K8sClientSet: clientset,
+	}
+	//getDeploymentsHealth(clientset)
+	if err := startServer(*listenAddr, server); err != nil {
+		panic(err)
+	}
 }
 
 // getKubernetesVersion returns a string GitVersion of the Kubernetes server defined by the clientset.
@@ -66,8 +73,9 @@ func getKubernetesVersion(clientset kubernetes.Interface) (string, error) {
 // startServer launches an HTTP server with defined handlers and blocks until it's terminated or fails with an error.
 //
 // Expects a listenAddr to bind to.
-func startServer(listenAddr string) error {
+func startServer(listenAddr string, server Server) error {
 	http.HandleFunc("/healthz", healthHandler)
+	http.HandleFunc("/clusterdeploymentsinfo", server.clusterDeploymentsInfo)
 
 	fmt.Printf("Server listening on %s\n", listenAddr)
 
@@ -84,8 +92,27 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Cluster Deployments Info returns the status of each deployment of the cluster
+func (s *Server) clusterDeploymentsInfo(w http.ResponseWriter, r *http.Request) {
+
+	clusterDeploymentsInfo, err := getDeploymentsHealth(s.K8sClientSet)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err := w.Write([]byte("Internal Server Error"))
+		if err != nil {
+			fmt.Println("failed writing to response")
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+
+	err = json.NewEncoder(w).Encode(clusterDeploymentsInfo)
+	if err != nil {
+		fmt.Println("failed writing to response")
+	}
+}
+
 // Lists Deployments Health
-func getDeploymentsHealth(clientset kubernetes.Interface) (string, error) {
+func getDeploymentsHealth(clientset kubernetes.Interface) (*ClusterDeploymentsInfo, error) {
 	// List deployments in all namespaces
 	deploymentsClient := clientset.AppsV1().Deployments(metav1.NamespaceAll)
 	deployments, err := deploymentsClient.List(context.TODO(), metav1.ListOptions{})
@@ -110,5 +137,5 @@ func getDeploymentsHealth(clientset kubernetes.Interface) (string, error) {
 		}
 	}
 	fmt.Printf("%+v\n", clusterInfo)
-	return "", nil
+	return clusterInfo, nil
 }
