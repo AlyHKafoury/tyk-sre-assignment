@@ -1,17 +1,30 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+type DeploymentInfo struct {
+	Name          string `json:"deployment_name"`
+	RequestedPods int32  `json:"requested_pods"`
+	ReadyPods     int32  `json:"ready_pods"`
+}
+
+type ClusterDeploymentsInfo struct {
+	ReadyDeployments  []DeploymentInfo `json:ready_deployments`
+	FailedDeployments []DeploymentInfo `json:failed_deployments`
+}
+
 func main() {
 	kubeconfig := flag.String("kubeconfig", "", "path to kubeconfig, leave empty for in-cluster")
-	listenAddr := flag.String("address", ":8080", "HTTP server listen address")
+	// listenAddr := flag.String("address", ":8080", "HTTP server listen address")
 
 	flag.Parse()
 
@@ -32,9 +45,10 @@ func main() {
 
 	fmt.Printf("Connected to Kubernetes %s\n", version)
 
-	if err := startServer(*listenAddr); err != nil {
-		panic(err)
-	}
+	getDeploymentsHealth(clientset)
+	// if err := startServer(*listenAddr); err != nil {
+	// 	panic(err)
+	// }
 }
 
 // getKubernetesVersion returns a string GitVersion of the Kubernetes server defined by the clientset.
@@ -68,4 +82,33 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println("failed writing to response")
 	}
+}
+
+// Lists Deployments Health
+func getDeploymentsHealth(clientset kubernetes.Interface) (string, error) {
+	// List deployments in all namespaces
+	deploymentsClient := clientset.AppsV1().Deployments(metav1.NamespaceAll)
+	deployments, err := deploymentsClient.List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	clusterInfo := new(ClusterDeploymentsInfo)
+
+	fmt.Printf("Found %d deployments:\n", len(deployments.Items))
+	for _, deployment := range deployments.Items {
+		currentDeploymentInfo := DeploymentInfo{
+			Name:          deployment.Name,
+			RequestedPods: *deployment.Spec.Replicas,
+			ReadyPods:     deployment.Status.ReadyReplicas,
+		}
+		fmt.Printf("%+v\n", currentDeploymentInfo)
+		if *deployment.Spec.Replicas <= deployment.Status.ReadyReplicas {
+			clusterInfo.ReadyDeployments = append(clusterInfo.ReadyDeployments, currentDeploymentInfo)
+		} else {
+			clusterInfo.FailedDeployments = append(clusterInfo.FailedDeployments, currentDeploymentInfo)
+		}
+	}
+	fmt.Printf("%+v\n", clusterInfo)
+	return "", nil
 }
