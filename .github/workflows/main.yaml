@@ -28,5 +28,5 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/app_tyk_demo:latest
-            ghcr.io/${{ github.repository }}/app_tyk_demo:${{ github.sha }}
+            ghcr.io/app_tyk_demo/app_tyk_demo:latest
+            ghcr.io/app_tyk_demo/app_tyk_demo:${{ github.sha }}
