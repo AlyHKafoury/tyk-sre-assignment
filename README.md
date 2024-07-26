@@ -45,3 +45,8 @@ To execute unit tests:
 ```
 python3 tests.py -v
 ```
+
+### Improvements:
+- Add unit tests for the new functions
+- Add docker container port as an environment variable
+- Abstract the client k8s/calico part as an interface and add it to its own package
