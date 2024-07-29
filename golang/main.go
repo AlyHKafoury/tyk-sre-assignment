@@ -244,7 +244,7 @@ func createDenyNetworkPolicy(clientset kubernetes.Interface, calicoClientset cli
 
 	n, err := calicoClientset.ProjectcalicoV3().NetworkPolicies(requestdetails.A.Namespace).Create(context.TODO(), networkPolicy, metav1.CreateOptions{})
 	if err != nil {
-		fmt.Println("Error in here" + err.Error())
+		fmt.Println("Error :" + err.Error())
 		return "", err
 	}
 
