@@ -18,5 +18,6 @@ RUN adduser -D app
 COPY --from=builder --chown=app:app /app/myapp .
 
 EXPOSE 8080
+USER app
 
 CMD ["./myapp"]
